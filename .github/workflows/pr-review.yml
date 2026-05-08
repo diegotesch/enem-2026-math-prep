@@ -1,0 +1,33 @@
+name: PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '>=22'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run lint
+        continue-on-error: true
+      - name: Comment on PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LINT_OUTPUT=$(npm run lint 2>&1) || true
+          if [ $? -eq 0 ]; then
+            COMMENT="✅ No lint errors found."
+          else
+            LIMITED_OUTPUT=$(echo "$LINT_OUTPUT" | head -20)
+            COMMENT="❌ Lint errors found (showing first 20 lines):\n\n\`\`\`\n$LIMITED_OUTPUT\n\`\`\`"
+          fi
+          gh pr comment "$PR_NUMBER" --body "$COMMENT"
