@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, Button, StyleSheet, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useAuth } from '../../context/AuthContext';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 type RootStackParamList = {
@@ -14,27 +15,64 @@ type LoginScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, '
 
 export default function LoginScreen() {
   const navigation = useNavigation<LoginScreenNavigationProp>();
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [emailError, setEmailError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+
+  const validateEmail = (email: string) => {
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return re.test(email);
+  };
 
   const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
+    // Clear previous errors
+    setEmailError('');
+    setPasswordError('');
+
+    // Validate email
+    if (!email) {
+      setEmailError('Email is required');
+    } else if (!validateEmail(email)) {
+      setEmailError('Please enter a valid email');
+    }
+
+    // Validate password
+    if (!password) {
+      setPasswordError('Password is required');
+    }
+
+    // If there are errors, don't submit
+    if (emailError || passwordError) {
       return;
     }
 
     setLoading(true);
     try {
-      // TODO: Implement actual API call to backend
-      // For now, simulate successful login
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // In a real app, you would store the token and user data
-      // For now, just navigate to home
+      // Call API /api/auth/login
+      const response = await fetch('http://localhost:5000/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Login failed');
+      }
+
+      // Save token via AuthContext
+      login(data.token, data.user || { email });
+
+      // Navigate to Home
       navigation.navigate('Home');
-    } catch (error) {
-      Alert.alert('Login Failed', 'Invalid email or password');
+    } catch (error: any) {
+      Alert.alert('Login Failed', error.message);
     } finally {
       setLoading(false);
     }
@@ -47,30 +85,33 @@ export default function LoginScreen() {
       
       <View style={styles.inputContainer}>
         <TextInput
-          style={styles.input}
+          style={[styles.input, emailError && styles.inputError]}
           placeholder="Email"
           value={email}
           onChangeText={setEmail}
           keyboardType="email-address"
           autoCapitalize="none"
         />
+        {emailError && <Text style={styles.errorText}>{emailError}</Text>}
+        
         <TextInput
-          style={styles.input}
+          style={[styles.input, passwordError && styles.inputError]}
           placeholder="Password"
           value={password}
           onChangeText={setPassword}
           secureTextEntry
         />
+        {passwordError && <Text style={styles.errorText}>{passwordError}</Text>}
       </View>
       
       <Button
-        title="Login"
+        title="Entrar"
         onPress={handleLogin}
         color="#841584"
-        disabled={loading}
+        disabled={loading || !email || !password || !!emailError || !!passwordError}
       />
       
-      {loading && <Text style={styles.loading}>Logging in...</Text>}
+      {loading && <Text style={styles.logging}>Logging in...</Text>}
       
       <View style={styles.bottomLinks}>
         <Text style={styles.link} onPress={() => navigation.navigate('Register')}>
@@ -110,8 +151,16 @@ const styles = StyleSheet.create({
     borderColor: '#ddd',
     borderRadius: 5,
     paddingHorizontal: 10,
-    marginBottom: 15,
+    marginBottom: 5,
     fontSize: 16,
+  },
+  inputError: {
+    borderColor: '#ff0000',
+  },
+  errorText: {
+    color: '#ff0000',
+    fontSize: 12,
+    marginBottom: 15,
   },
   bottomLinks: {
     marginTop: 20,
@@ -120,7 +169,7 @@ const styles = StyleSheet.create({
     color: '#841584',
     textDecorationLine: 'underline',
   },
-  loading: {
+  logging: {
     marginTop: 10,
     color: '#666',
   },
