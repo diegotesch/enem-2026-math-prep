@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: pull/${{ github.event.number }}/head
+          ref: refs/pull/${{ github.event.number }}/head
           fetch-depth: 0
       - name: Use Node.js
         uses: actions/setup-node@v4
