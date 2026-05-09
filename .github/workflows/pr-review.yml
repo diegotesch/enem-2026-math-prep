@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: pull/${{ github.event.number }}/head
+          ref: refs/pull/${{ github.event.number }}/head
           fetch-depth: 0
       - name: Use Node.js
         uses: actions/setup-node@v4
@@ -18,17 +18,57 @@ jobs:
           node-version: '>=22'
           cache: 'npm'
       - run: npm ci
-      - run: npm run lint
-        continue-on-error: true
+      - name: Run Lint
+        id: lint
+        run: |
+          LINT_OUTPUT=$(npm run lint 2>&1) || true
+          echo "lint_output<<EOF" >> $GITHUB_OUTPUT
+          echo "$LINT_OUTPUT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          if [ $? -eq 0 ]; then
+            echo "lint_result=success" >> $GITHUB_OUTPUT
+          else
+            echo "lint_result=failure" >> $GITHUB_OUTPUT
+          fi
+      - name: Prepare Comment
+        id: comment
+        run: |
+          LINT_OUTPUT="${{ steps.lint.outputs.lint_output }}"
+          LINT_RESULT="${{ steps.lint.outputs.lint_result }}"
+          
+          if [ "$LINT_RESULT" = "success" ]; then
+            COMMENT="✅ **PR Review Passed**\n\nNo lint errors found."
+          else
+            LIMITED_OUTPUT=$(echo "$LINT_OUTPUT" | head -20)
+            COMMENT="❌ **PR Review Failed**\n\nLint errors found (showing first 20 lines):\n\n\`\`\`\n$LIMITED_OUTPUT\n\`\`\`\n\n💡 **To request changes:**\n1. Review the lint errors above\n2. Make necessary fixes in your branch\n3. Push updates to this PR\n4. The workflow will re-run automatically\n\n🔧 **Maintainers can also:**\n- Use GitHub's \"Request changes\" review feature\n- Leave general comments on the PR\n- Approve when ready"
+          fi
+          
+          # Escape newlines for JSON
+          COMMENT_ESCAPED=$(echo "$COMMENT" | sed ':a;N;$!ba;s/\n/\\n/g' | sed 's/"/\\"/g')
+          echo "comment=$COMMENT_ESCAPED" >> $GITHUB_OUTPUT
       - name: Comment on PR
+        if: ${{ always() }}
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          LINT_OUTPUT=$(npm run lint 2>&1) || true
-          if [ $? -eq 0 ]; then
-            COMMENT="✅ No lint errors found."
+          COMMENT="${{ steps.comment.outputs.comment }}"
+          
+          # Check if we can use gh CLI
+          if command -v gh >/dev/null 2>&1 && [ -n "$GITHUB_TOKEN" ]; then
+            # Configure gh
+            echo "$GITHUB_TOKEN" | gh auth login --with-token
+            
+            # Get PR number from event
+            PR_NUMBER="${{ github.event.number }}"
+            
+            # Comment on PR
+            gh pr comment "$PR_NUMBER" --body "$COMMENT"
+            echo "✅ Comment posted successfully"
           else
-            LIMITED_OUTPUT=$(echo "$LINT_OUTPUT" | head -20)
-            COMMENT="❌ Lint errors found (showing first 20 lines):\n\n\`\`\`\n$LIMITED_OUTPUT\n\`\`\`"
+            # Fallback: just output the comment for visibility in logs
+            echo "⚠️  Could not post comment via gh CLI (missing token or gh not available)"
+            echo "Comment that would be posted:"
+            echo "---"
+            echo "$COMMENT"
+            echo "---"
           fi
-          gh pr comment "$PR_NUMBER" --body "$COMMENT"
