@@ -22,7 +22,7 @@ jobs:
         continue-on-error: true
       - name: Comment on PR
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           LINT_OUTPUT=$(npm run lint 2>&1) || true
           if [ $? -eq 0 ]; then
